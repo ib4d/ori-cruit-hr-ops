@@ -1,0 +1,440 @@
+// This is your Prisma schema file for Ori-Cruit
+// Multi-tenant, GDPR/RODO compliant International Recruitment SaaS
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── MULTI-TENANT CORE ─────────────────────────────────────
+
+model Organization {
+  id               String   @id @default(uuid())
+  name             String
+  slug             String   @unique
+  primaryDomain    String?  @map("primary_domain")
+  logoUrl          String?  @map("logo_url")
+  primaryColor     String   @default("#00D4AA") @map("primary_color")
+  secondaryColor   String   @default("#C9A84C") @map("secondary_color")
+  localeDefault    String   @default("en") @map("locale_default")
+  allowedLocales   String[] @default(["en", "es", "pl"]) @map("allowed_locales")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  domains         OrganizationDomain[]
+  memberships     OrganizationMembership[]
+  candidates      Candidate[]
+  projects        Project[]
+  messageTemplates MessageTemplate[]
+  integrations    OrganizationIntegration[]
+  retentionPolicies RetentionPolicy[]
+  followUps       FollowUp[]
+  auditLogs       AuditLog[]
+
+  @@map("organizations")
+}
+
+model OrganizationDomain {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  domain         String    @unique
+  isPrimary      Boolean   @default(false) @map("is_primary")
+  verifiedAt     DateTime? @map("verified_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_domains")
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  passwordHash       String   @map("password_hash")
+  fullName           String   @map("full_name")
+  languagePreference String   @default("en") @map("language_preference")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  lastLoginAt        DateTime? @map("last_login_at")
+
+  memberships OrganizationMembership[]
+  messages    Message[]
+  followUps   FollowUp[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+model OrganizationMembership {
+  id             String           @id @default(uuid())
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")
+  role           MemberRole       @default(RECRUITER)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_memberships")
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  RECRUITER
+  LEGAL
+  VIEWER
+}
+
+// ─── CANDIDATE PIPELINE ────────────────────────────────────
+
+model Candidate {
+  id               String          @id @default(uuid())
+  organizationId   String          @map("organization_id")
+  firstName        String          @map("first_name")
+  lastName         String          @map("last_name")
+  email            String?
+  phone            String?
+  whatsappNumber   String?         @map("whatsapp_number")
+  nationality      String?
+  countryOfOrigin  String?         @map("country_of_origin")
+  status           CandidateStatus @default(LEAD)
+  source           String?
+  hrappkaId        String?         @unique @map("hrappka_id")
+  notes            String?
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  organization     Organization          @relation(fields: [organizationId], references: [id])
+  documents        CandidateDocument[]
+  legalReviews     LegalReview[]
+  assignments      Assignment[]
+  payments         Payment[]
+  followUps        FollowUp[]
+  consents         Consent[]
+  messages         Message[]
+  events           CandidateEvent[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@map("candidates")
+}
+
+enum CandidateStatus {
+  LEAD
+  SURVEY_PENDING
+  SURVEY_DONE
+  DOCS_PENDING
+  DOCS_SUBMITTED
+  LEGAL_REVIEW
+  LEGAL_APPROVED
+  LEGAL_REJECTED
+  PAYMENT_PENDING
+  PAYMENT_DONE
+  ASSIGNED
+  ACTIVE
+  CLOSED_SUCCESS
+  CLOSED_NO_SHOW
+  CLOSED_ABANDONED
+}
+
+// ─── DOCUMENTS ─────────────────────────────────────────────
+
+model CandidateDocument {
+  id              String       @id @default(uuid())
+  candidateId     String       @map("candidate_id")
+  organizationId  String       @map("organization_id")
+  type            DocumentType
+  fileName        String       @map("file_name")
+  fileUrl         String       @map("file_url")
+  fileSize        Int?         @map("file_size")
+  mimeType        String?      @map("mime_type")
+  expiresAt       DateTime?    @map("expires_at")
+  verifiedAt      DateTime?    @map("verified_at")
+  notes           String?
+  uploadedAt      DateTime     @default(now()) @map("uploaded_at")
+
+  candidate       Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@map("candidate_documents")
+}
+
+enum DocumentType {
+  PASSPORT
+  KARTA_POBYTU
+  VOIVODE_DECISION
+  WORK_PERMIT
+  CONTRACT
+  PHOTO_ID
+  PROOF_OF_ADDRESS
+  OTHER
+}
+
+// ─── LEGAL REVIEWS ─────────────────────────────────────────
+
+model LegalReview {
+  id              String            @id @default(uuid())
+  candidateId     String            @map("candidate_id")
+  organizationId  String            @map("organization_id")
+  status          LegalReviewStatus @default(PENDING)
+  reviewedBy      String?           @map("reviewed_by")
+  reason          String?
+  notes           String?
+  reviewedAt      DateTime?         @map("reviewed_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  candidate       Candidate  @relation(fields: [candidateId], references: [id])
+
+  @@index([organizationId, status])
+  @@map("legal_reviews")
+}
+
+enum LegalReviewStatus {
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_MORE_INFO
+}
+
+// ─── PROJECTS & ASSIGNMENTS ────────────────────────────────
+
+model Project {
+  id              String        @id @default(uuid())
+  organizationId  String        @map("organization_id")
+  name            String
+  description     String?
+  location        String?
+  startDate       DateTime?     @map("start_date")
+  endDate         DateTime?     @map("end_date")
+  status          ProjectStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  assignments     Assignment[]
+
+  @@index([organizationId])
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  DRAFT
+}
+
+model Assignment {
+  id              String   @id @default(uuid())
+  candidateId     String   @map("candidate_id")
+  projectId       String   @map("project_id")
+  organizationId  String   @map("organization_id")
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  notes           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  candidate       Candidate @relation(fields: [candidateId], references: [id])
+  project         Project   @relation(fields: [projectId], references: [id])
+
+  @@index([organizationId])
+  @@map("assignments")
+}
+
+// ─── PAYMENTS ──────────────────────────────────────────────
+
+model Payment {
+  id              String        @id @default(uuid())
+  candidateId     String        @map("candidate_id")
+  organizationId  String        @map("organization_id")
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("PLN")
+  purpose         String        @default("LEGALIZATION_FEE")
+  status          PaymentStatus @default(PENDING)
+  proofUrl        String?       @map("proof_url")
+  paidAt          DateTime?     @map("paid_at")
+  notes           String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  candidate       Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([organizationId])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+// ─── FOLLOW-UPS ────────────────────────────────────────────
+
+model FollowUp {
+  id              String       @id @default(uuid())
+  candidateId     String       @map("candidate_id")
+  organizationId  String       @map("organization_id")
+  userId          String?      @map("user_id")
+  title           String
+  type            String       // T-1, T+7, T+30, etc.
+  status          String       @default("PENDING") // PENDING | COMPLETED | CANCELLED
+  scheduledAt     DateTime     @map("scheduled_at")
+  completedAt     DateTime?    @map("completed_at")
+  channel         String       @default("whatsapp") // whatsapp | email | manual
+  notes           String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  candidate       Candidate    @relation(fields: [candidateId], references: [id])
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  user            User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, scheduledAt])
+  @@map("follow_ups")
+}
+
+// ─── GDPR / CONSENTS ───────────────────────────────────────
+
+model Consent {
+  id              String   @id @default(uuid())
+  candidateId     String   @map("candidate_id")
+  organizationId  String   @map("organization_id")
+  purpose         String   // PROCESSING, FUTURE_OPPORTUNITIES, WHATSAPP_MARKETING
+  granted         Boolean  @default(true)
+  grantedAt       DateTime @default(now()) @map("granted_at")
+  revokedAt       DateTime? @map("revoked_at")
+  ipAddress       String?   @map("ip_address")
+  method          String    @default("web_form") // web_form | verbal | written
+
+  candidate       Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId])
+  @@map("consents")
+}
+
+model RetentionPolicy {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  outcomeType     String   @map("outcome_type")  // PLACED, REJECTED, ABANDONED
+  retentionDays   Int      @map("retention_days")
+  action          String   @default("ANONYMISE") // ANONYMISE | DELETE
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("retention_policies")
+}
+
+// ─── MESSAGING ─────────────────────────────────────────────
+
+model MessageTemplate {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  code            String   // FIRST_CONTACT, SEND_OFFER, DOCS_RECEIVED, ARRIVAL_INSTRUCTIONS
+  locale          String   // es | en | pl
+  channel         String   // whatsapp | email
+  subject         String?  // for email
+  body            String
+  variables       String[] @default([]) // list of {{variable}} names
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, code, locale, channel])
+  @@map("message_templates")
+}
+
+model Message {
+  id              String        @id @default(uuid())
+  candidateId     String        @map("candidate_id")
+  organizationId  String        @map("organization_id")
+  userId          String?       @map("user_id")
+  templateCode    String?       @map("template_code")
+  channel         String        // whatsapp | email
+  direction       String        // OUTBOUND | INBOUND
+  status          MessageStatus @default(PENDING)
+  subject         String?
+  body            String
+  externalId      String?       @map("external_id")
+  sentAt          DateTime?     @map("sent_at")
+  deliveredAt     DateTime?     @map("delivered_at")
+  readAt          DateTime?     @map("read_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  candidate       Candidate        @relation(fields: [candidateId], references: [id])
+  user            User?            @relation(fields: [userId], references: [id])
+
+  @@index([candidateId])
+  @@map("messages")
+}
+
+enum MessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+// ─── AUDIT / EVENTS ────────────────────────────────────────
+
+model CandidateEvent {
+  id              String   @id @default(uuid())
+  candidateId     String   @map("candidate_id")
+  organizationId  String   @map("organization_id")
+  type            String   // STATUS_CHANGED | DOCUMENT_UPLOADED | MESSAGE_SENT | etc.
+  payload         Json?
+  performedBy     String?  @map("performed_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  candidate       Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId, createdAt])
+  @@map("candidate_events")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  userId          String?  @map("user_id")
+  action          String   // READ | CREATE | UPDATE | DELETE
+  entity          String
+  entityId        String   @map("entity_id")
+  changes         Json?
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  user            User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+// ─── INTEGRATIONS ──────────────────────────────────────────
+
+model OrganizationIntegration {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  provider        String   // HRAPPKA | WHATSAPP | GOOGLE_CALENDAR | SLACK
+  enabled         Boolean  @default(false)
+  config          Json     @default("{}")  // encrypted secrets
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, provider])
+  @@map("organization_integrations")
+}

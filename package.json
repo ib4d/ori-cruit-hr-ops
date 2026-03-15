@@ -1,0 +1,22 @@
+{
+  "name": "ori-cruit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ori-Cruit — International Recruitment & HR Ops SaaS (multi-tenant, white-label)",
+  "workspaces": [
+    "web",
+    "backend",
+    "workers"
+  ],
+  "scripts": {
+    "dev": "npm run web:dev",
+    "web:dev": "cd web && npm run dev",
+    "backend:dev": "cd backend && npm run start:dev",
+    "workers:dev": "cd workers && npm run dev",
+    "app:dev": "cd app && flutter run -d chrome",
+    "install:all": "npm install && cd backend && npm install && cd ../workers && npm install && cd ../web && npm install"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
