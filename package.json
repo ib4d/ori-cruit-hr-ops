@@ -9,11 +9,14 @@
     "workers"
   ],
   "scripts": {
-    "dev": "npm run web:dev",
-    "web:dev": "cd web && npm run dev",
-    "backend:dev": "cd backend && npm run start:dev",
-    "workers:dev": "cd workers && npm run dev",
-    "app:dev": "cd app && flutter run -d chrome",
+    "dev": "npm run dev:all",
+    "dev:api": "cd backend && npm run start:dev",
+    "dev:web": "cd web && npm run dev",
+    "dev:workers": "cd workers && npm run dev",
+    "dev:app": "cd app && flutter run -d chrome",
+    "dev:all": "start npm run dev:api & start npm run dev:web & start npm run dev:workers",
+    "db:migrate": "cd backend && npx prisma migrate dev",
+    "db:seed": "cd backend && npm run db:seed",
     "install:all": "npm install && cd backend && npm install && cd ../workers && npm install && cd ../web && npm install"
   },
   "engines": {

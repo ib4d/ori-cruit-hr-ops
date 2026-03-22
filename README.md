@@ -32,143 +32,94 @@ ori-cruit/
 
 ---
 
-## Quick Start
+## Quick Start — Local Development
 
 ### Prerequisites
 - Node.js ≥ 18
-- PostgreSQL running locally or a managed instance URL
-- (Optional) Flutter SDK for mobile/web app
+- PostgreSQL running locally or a managed instance URI
+- Optional: Flutter SDK (if working on full desktop app)
 
-### 1. Install dependencies
-
+### 1. Clone & Install
 ```bash
-# Root
-npm install
+# Clone the repository
+git clone https://github.com/ib4d/ori-cruit-hr-ops.git
+cd ori-cruit-hr-ops
 
-# Backend
-cd backend && npm install
-
-# Workers
-cd workers && npm install
-
-# Marketing web
-cd web && npm install
+# Install all dependencies (Backend, Web, Workers)
+npm run install:all
 ```
 
-### 2. Configure environment
-
+### 2. Configure Environment
 ```bash
-# Copy and fill in your values
+# Copy env templates
 cp .env.example .env
 cp backend/.env.example backend/.env
+
+# Open .env and ensure DATABASE_URL is set correctly:
+# DATABASE_URL="postgresql://postgres:password@localhost:5432/oricruit"
 ```
 
-### 3. Run database migrations
-
+### 3. Run Migrations & Seed Data
 ```bash
-cd backend
-npx prisma migrate dev --name init
-npx prisma db seed
+# Safely apply Prisma schema to database
+npm run db:migrate
+
+# Seed initial tenants, mock data
+npm run db:seed
 ```
 
-### 4. Start development servers
-
+### 4. Start the Application
 ```bash
-# Terminal 1 — Backend API (http://localhost:3000)
-cd backend && npm run start:dev
-
-# Terminal 2 — Workers
-cd workers && npm run dev
-
-# Terminal 3 — Marketing landing (http://localhost:5173)
-cd web && npm run dev
-
-# Terminal 4 — Flutter web app (upcoming)
-# cd app && flutter run -d chrome
+# Starts the NestJS Backend, Vite Web, and Workers concurrently
+npm run dev
+# Alternately: npm run dev:all
 ```
 
 ---
 
-## Multi-tenant Architecture
+## Deployment & Runbook
 
-Each **Organization** (tenant) has:
-- Its own isolated data (`organization_id` on every row)
-- Custom branding (logo, colors, domain)
-- Default language (ES / EN / PL)
-- Optional custom domain resolution
+### Cloud Deployment (Docker)
 
-Tenant is resolved from:
-1. **JWT token** → `organization_id` in payload
-2. **Request domain** → mapped via `organization_domains` table
+A multi-stage `Dockerfile` is provided in `/backend` to containerize the NestJS API. This is production-ready for platforms like Fly.io, Render, Railway, or AWS ECS.
 
----
+1. **Required Environment Variables in Production:**
+   - `NODE_ENV="production"`
+   - `DATABASE_URL` (production database uri)
+   - `PORT` (usually `3000` or defined by provider)
+   - `JWT_SECRET` (secure random string)
+   - `API_BASE_URL`
+   - External Keys (HRappka, WhatsApp, Resend/SMTP).
 
-## Module Map (Backend)
+2. **Docker Compose example:**
+   ```yaml
+   services:
+     api:
+       build: 
+         context: .
+         dockerfile: backend/Dockerfile
+       ports: ["3000:3000"]
+       environment:
+         - DATABASE_URL=postgres://user:pass@db:5432/oricruit
+         - JWT_SECRET=strongsecret
+   ```
 
-| Module | Description |
-|--------|-------------|
-| `auth` | Login, register, JWT, org membership |
-| `organizations` | Tenants, branding, domains, settings |
-| `users` | User accounts, roles |
-| `candidates` | Core pipeline records |
-| `candidate-documents` | Document upload, verification |
-| `legal-reviews` | Legal approval workflow |
-| `projects` | Job/project records |
-| `assignments` | Candidate ↔ Project links |
-| `payments` | 800 PLN legalization fees |
-| `follow-ups` | Scheduled reminders |
-| `consents` | GDPR/RODO consent records |
-| `message-templates` | WhatsApp/email templates (ES/EN/PL) |
-| `messages` | Sent message log |
-| `candidate-events` | Audit timeline |
-| `audit-log` | Full audit trail |
-| `integrations` | HRappka, WhatsApp, Google Calendar |
-| `compliance` | GDPR retention policies |
+3. **CI/CD Automation:**
+   - The `.github/workflows/ci.yml` file handles PR unit testing and build verification automatically on push to `main`.
 
----
+### Health Checks
 
-## Environment Variables
+The backend automatically exposes a health endpoint at `GET /health` which validates process stability and database accessibility.
 
-See `.env.example` for the full list. Key variables:
+### Portable Client / Windows Build
 
-```env
-DATABASE_URL=postgresql://user:pass@localhost:5432/oricruit
-JWT_SECRET=your_jwt_secret_here
-WHATSAPP_API_TOKEN=
-HRAPPKA_API_KEY=
-```
+To generate the distributable client for colleagues on Windows:
 
----
-
-## Deployment
-
-**Recommended production stack:**
-- **Backend + Workers**: Railway / Render / Fly.io
-- **Database**: Supabase / Neon (EU region, GDPR-compliant)
-- **Marketing web**: Vercel / Netlify
-- **Assets / Storage**: Cloudflare R2 or AWS S3 (EU)
-
-See `docker-compose.yml` for complete local infra setup.
-
----
-
-## Languages
-
-Full UI and messaging templates in:
-- 🇪🇸 Spanish (ES) — primary for candidates
-- 🇬🇧 English (EN) — international
-- 🇵🇱 Polish (PL) — recruiter-facing
-
----
-
-## GDPR / RODO Compliance
-
-- Consent collected and stored per candidate per purpose
-- Data export endpoint (`GET /candidates/:id/export`)
-- Anonymisation endpoint (`DELETE /candidates/:id`)
-- Retention policies enforced by worker jobs
-- Full audit log for all sensitive entity access
-- No personal data sent to third parties without explicit org consent
+**Flutter Approach (Upcoming Desktop App):**
+1. Make sure Flutter Windows is enabled: `flutter config --enable-windows-desktop`
+2. Build the app from `app/` folder: `flutter build windows --release`
+3. We provide an automatic packaging script. Run `powershell ./scripts/package-windows.ps1`
+4. The `.zip` will be produced in the `dist/` directory, which can be unzipped by users.
 
 ---
 

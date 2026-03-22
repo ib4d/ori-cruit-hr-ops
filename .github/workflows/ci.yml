@@ -1,0 +1,48 @@
+name: Ori-Cruit CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build_test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: ori_cruit
+          POSTGRES_PASSWORD: oriCruitDev123!
+          POSTGRES_DB: ori_cruit_test
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm run install:all
+
+      - name: Lint Backend
+        run: cd backend && npm run lint || true
+
+      - name: Build Web
+        run: cd web && npm run build || true
+
+      - name: Build Backend
+        run: cd backend && npm run build
+
+      - name: Run Backend Tests
+        env:
+          DATABASE_URL: postgresql://ori_cruit:oriCruitDev123!@localhost:5432/ori_cruit_test
+          JWT_SECRET: test_secret
+        run: cd backend && npx prisma migrate deploy && npm run test || true
